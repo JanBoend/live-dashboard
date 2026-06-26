@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="30">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 16px; }
+  h1 { font-size: 1.1rem; color: #888; margin-bottom: 16px; }
+
+  /* Header stats */
+  .header { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .stat { background: #1a1a1a; border-radius: 8px; padding: 14px 20px; flex: 1; min-width: 140px; }
+  .stat .label { font-size: 0.7rem; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+  .stat .value { font-size: 1.6rem; font-weight: 700; margin-top: 4px; }
+  .green { color: #22c55e; }
+  .red   { color: #ef4444; }
+  .amber { color: #f59e0b; }
+
+  /* Section */
+  .section { margin-bottom: 24px; }
+  .section h2 { font-size: 0.8rem; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+
+  /* Strategy grid */
+  .strat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  .strat-card { background: #1a1a1a; border-radius: 8px; padding: 12px; }
+  .strat-card .name { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
+  .strat-card .meta { font-size: 0.72rem; color: #666; margin-top: 4px; }
+  .strat-card .pnl  { font-size: 1.1rem; font-weight: 700; margin-top: 6px; }
+  .badge { display: inline-block; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; margin-top: 4px; }
+  .badge-green { background: #14532d; color: #22c55e; }
+  .badge-grey  { background: #1f2937; color: #6b7280; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; background: #1a1a1a; border-radius: 8px; overflow: hidden; }
+  th { background: #111; color: #555; padding: 8px 10px; text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 7px 10px; border-bottom: 1px solid #222; }
+  tr:last-child td { border-bottom: none; }
+  .tp  { color: #22c55e; }
+  .sl  { color: #ef4444; }
+
+  /* Chart */
+  .chart-wrap { background: #1a1a1a; border-radius: 8px; padding: 16px; }
+</style>
+</head>
+<body>
+
+<h1>Trading Bot — {{ now }}</h1>
+
+<!-- ── Header stats ───────────────────────────────────────────────── -->
+<div class="header">
+  <div class="stat">
+    <div class="label">Equity</div>
+    <div class="value">${{ "%.2f"|format(equity) }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Today P&L</div>
+    <div class="value {% if today_pnl >= 0 %}green{% else %}red{% endif %}">
+      {{ "%+.2f"|format(today_pnl) }}
+    </div>
+  </div>
+  <div class="stat">
+    <div class="label">Daily DD</div>
+    <div class="value {% if daily_dd <= -3 %}red{% elif daily_dd < 0 %}amber{% else %}green{% endif %}">
+      {{ "%+.2f"|format(daily_dd) }}%
+    </div>
+  </div>
+  <div class="stat">
+    <div class="label">Kill-Switch</div>
+    <div class="value {% if kill_switch %}red{% else %}green{% endif %}">
+      {{ "ACTIVE" if kill_switch else "OK" }}
+    </div>
+  </div>
+  <div class="stat">
+    <div class="label">Open Positions</div>
+    <div class="value">{{ open_positions|length }}</div>
+  </div>
+</div>
+
+<!-- ── Equity curve ───────────────────────────────────────────────── -->
+<div class="section">
+  <h2>Equity Curve (30 days)</h2>
+  <div class="chart-wrap">
+    {% if equity_curve %}
+    <canvas id="eqChart" height="80"></canvas>
+    {% else %}
+    <p style="color:#555;padding:12px">No equity data yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Strategy grid ─────────────────────────────────────────────── -->
+<div class="section">
+  <h2>Strategies</h2>
+  <div class="strat-grid">
+    {% for s in strategy_stats %}
+    <div class="strat-card">
+      <div class="name">{{ s.strategy }}</div>
+      <div class="meta">{{ s.trades }} trades · {{ s.wr }}% WR</div>
+      <div class="pnl {% if s.total_pnl >= 0 %}green{% else %}red{% endif %}">
+        {{ "%+.2f"|format(s.total_pnl) }}
+      </div>
+      {% if s.traded_today %}
+        <span class="badge badge-green">Traded today</span>
+      {% else %}
+        <span class="badge badge-grey">Waiting</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ── Open positions ─────────────────────────────────────────────── -->
+{% if open_positions %}
+<div class="section">
+  <h2>Open Positions</h2>
+  <table>
+    <thead>
+      <tr><th>Strategy</th><th>Symbol</th><th>Side</th><th>Entry</th><th>SL</th><th>TP</th><th>Lots</th><th>Time</th></tr>
+    </thead>
+    <tbody>
+      {% for p in open_positions %}
+      <tr>
+        <td>{{ p.strategy }}</td>
+        <td>{{ p.symbol }}</td>
+        <td>{{ p.side }}</td>
+        <td>{{ "%.5f"|format(p.entry_price) }}</td>
+        <td class="sl">{{ "%.5f"|format(p.sl) }}</td>
+        <td class="tp">{{ "%.5f"|format(p.tp) }}</td>
+        <td>{{ "%.2f"|format(p.lots) }}</td>
+        <td>{{ p.timestamp }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- ── Trade history ──────────────────────────────────────────────── -->
+<div class="section">
+  <h2>Recent Trades (last 50)</h2>
+  {% if recent_trades %}
+  <table>
+    <thead>
+      <tr><th>Time</th><th>Strategy</th><th>Symbol</th><th>Side</th><th>Result</th><th>P&L</th></tr>
+    </thead>
+    <tbody>
+      {% for t in recent_trades %}
+      <tr>
+        <td>{{ t.timestamp }}</td>
+        <td>{{ t.strategy }}</td>
+        <td>{{ t.symbol }}</td>
+        <td>{{ t.side }}</td>
+        <td class="{% if t.result == 'TP' %}tp{% else %}sl{% endif %}">{{ t.result }}</td>
+        <td class="{% if t.pnl and t.pnl >= 0 %}green{% else %}red{% endif %}">
+          {{ "%+.2f"|format(t.pnl) if t.pnl else "—" }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#555;padding:12px">No closed trades yet.</p>
+  {% endif %}
+</div>
+
+<!-- ── Chart.js ──────────────────────────────────────────────────── -->
+<script>
+const raw = {{ equity_curve | tojson }};
+if (raw.length > 0) {
+const labels = raw.map(d => d.t.substring(0, 16));
+const data   = raw.map(d => d.v);
+
+new Chart(document.getElementById('eqChart'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      data,
+      borderColor: '#22c55e',
+      backgroundColor: 'rgba(34,197,94,0.08)',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      fill: true,
+      tension: 0.3,
+    }]
+  },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#555', maxTicksLimit: 8 }, grid: { color: '#1f1f1f' } },
+      y: { ticks: { color: '#555' }, grid: { color: '#1f1f1f' } }
+    }
+  }
+});
+} // end if raw.length > 0
+</script>
+
+</body>
+</html>
