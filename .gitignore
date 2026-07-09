@@ -3,4 +3,5 @@ __pycache__/
 venv/
 .env
 trades.db
+trades_sample.db
 .DS_Store
